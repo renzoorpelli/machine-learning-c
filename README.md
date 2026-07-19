@@ -1,49 +1,33 @@
 # ML-in-C
 
-**[github.com/renzoorpelli/machine-learning-c](https://github.com/renzoorpelli/machine-learning-c)**
+Neural nets in C with autodiff on a computational graph. Classifies MNIST digits
+(784 → 16 → 16 → 10, residual connection) at ~91% after 3 epochs, ~10s.
 
-A minimal machine learning library in C: neural networks with automatic differentiation
-via computational graphs. Trains MNIST digit classification (784→16→16→10 with residual connections).
+Based on [coding a machine learning library in c from scratch](https://www.youtube.com/watch?v=hL_n_GljC0I).
+We kept the graph / backprop idea and reworked the rest: plain `malloc` instead of
+the arena, `rand()` instead of PCG, code split into modules.
 
-Implementation based on [coding a machine learning library in c from scratch](https://www.youtube.com/watch?v=hL_n_GljC0I), with modifications: plain `malloc`/`free` instead of the arena allocator, stdlib `rand()` instead of PCG, and the code split into modules.
-
-## Pipeline
-
-```
-Data → Forward Pass → Predictions → Loss → Backprop → Parameter Update
-```
-
-## Quick Reference
-
-| Concept | Type | Role |
-|---------|------|------|
-| `matrix` | `struct { u32 rows, cols; f32 *data; }` | Core data type, row-major |
-| `model_var` | graph node | Holds `val`, `grad`, `op`, `inputs[2]` |
-| `model_context` | network container | Owns input, output, cost, compiled programs |
-| memory | `malloc`/`calloc` | `mat_free` per matrix; one `model_destroy` frees the whole graph |
-
-## Docs
-
-- [Graph worked example](docs/graph.md) — the MNIST computational graph plus a full numeric forward/backward pass traced through the actual ops
-
-## Usage
-
-```c
-mnist_data data = mnist_load("data");
-
-model_context *model = model_create();
-create_mnist_model(model);
-model_compile(model);
-
-model_training_desc desc = { .epochs=3, .batch_size=50, .learning_rate=0.01f, ... };
-model_train(model, &desc);
-
-memcpy(model->input->val->data, test_image, 784 * sizeof(f32));
-model_feedforward(model);
-u32 predicted = mat_argmax(model->output->val);
-
-mnist_data_free(&data);
-model_destroy(model);
+```sh
+cmake --build cmake-build-debug
+./cmake-build-debug/ml_c   # from the project root so data/ resolves
 ```
 
-**Notation**: `θ` = parameters · `η` = learning rate · `·` = matrix multiply · `∂` = partial derivative
+Files:
+
+- `main.c` — load, train, predict
+- `types.h` — `u32`, `f32`, and the other short aliases
+- `matrix.h/.c` — matrices and the math (mul, relu, softmax, grads…)
+- `model.h/.c` — the graph, compile, forward/backward, SGD
+- `mnist.h/.c` — data loading, digit draw, the MNIST net definition
+- `data/` — `.mat` files (gitignored); regenerate with `scripts/mnist.py`
+- `docs/graph.md` — numeric walkthrough of a forward + backward pass
+
+How it hangs together: every value is a row-major `matrix`. Ops wire into a
+graph of `model_var` nodes (value, grad, op, up to two inputs). Compile once
+into an execution order, then forward walks it and backprop walks it reverse,
+accumulating grads. Training is mini-batch SGD (batch 50, lr 0.01) with a
+Fisher-Yates shuffle. One `model_destroy()` frees the whole graph via a node
+registry; bad allocs and missing files `assert`.
+
+Use the `types.h` aliases, not raw `float`/`uint32_t`. C11, clean under
+`-Wall -Wextra`. Prefer less code over more.
