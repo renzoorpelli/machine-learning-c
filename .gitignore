@@ -1,0 +1,7 @@
+cmake-build-debug/
+.ruff_cache/
+data/
+*.o
+/main
+/train
+/train_debug
